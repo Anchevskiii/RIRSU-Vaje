@@ -12,3 +12,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Datasets
+Naloga4/dodatni-del/rirsu-2026-klasifikacija/

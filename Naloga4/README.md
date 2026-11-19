@@ -127,3 +127,21 @@ Namesto da vse slike ročno kopiramo v pomnilniško polje pred začetkom učenja
 
 **V: Zakaj smo v prilagojenem modelu zmanjšali `batch_size` s 32 na 16 in povečali `learning_rate` na `0.002`?**
 > **O**: Pri 192 učnih slikah paketek velikosti 32 pomeni samo 6 gradientnih korakov na epoho (300 korakov v 50 epohah), kar ob naključni augmentaciji in regularizaciji `Dropout` ni dovolj za popolno konvergenco. Zmanjšanje paketka na 16 podvoji število posodobitev na epoho (600 korakov), nekoliko višja učna stopnja `0.002` pa pospeši učenje globlje mreže brez izgube stabilnosti.
+
+---
+
+## 6. Hitri pregled pojmov in parametrov (kaj, kje, zakaj, učinek)
+
+| Pojem / parameter | Kaj počne | Kje in zakaj je uporabljen | Konkretni učinek v modelu |
+|---|---|---|---|
+| `Conv2D(16->32->64, 3x3)` | Drsi filtre `3x3` čez sliko in išče robove, kote ter loke | Referenčni ima `16 -> 16`, prilagojeni C pa `16 -> 32 -> 64` za hierarhično luščenje značilk | Konvolucijski del modela C naraste z 2.480 na 23.296 parametrov; točnost skoči z 82,7 % na 92,0 % |
+| `padding="same"` | Doda 1 piksel roba okoli slike pri `3x3` konvoluciji | Vsi konvolucijski sloji, da se dimenzija ne zmanjša prezgodaj (`28x28`, `14x14`) | Ohrani robne piksle in podatek o zunanjih obrisih likov |
+| `ReLU` in `Softmax` | `ReLU` odreže negativne vrednosti; `Softmax` pretvori izhod v verjetnosti | `ReLU` v skritih slojih za nelinearnost; `Softmax` na izhodu `Dense(3)` | Omogoči ločevanje nelinearnih oblik in izpis verjetnosti za 3 razrede |
+| `MaxPooling2D((2, 2))` | Iz kvadratka `2x2` vzame največjo vrednost in prepolovi dimenzijo | Za vsakim konvolucijskim blokom (2× pri A/B, 3× pri C) | Zmanjša `Flatten` na 576 elementov v C in doda odpornost na majhne premike |
+| `Flatten` proti `Dense` | `Flatten` splošči 2D mape v vektor; `Dense` jih poveže v klasifikator | Referenčni: `784 -> Dense(64)` (50.240 par.); C: `576 -> Dense(32)` (18.464 par.) | Zmanjša preprileganje in skupno število parametrov s 52.915 na 41.859 |
+| Augmentacija (`fill_value=1.0`) | Naključno zrcali (`RandomFlip`) in premika (`RandomTranslation`, 6 %) učne slike | Konfiguraciji B in C (samo pri `training=True`); belo ozadje zahteva `fill_value=1.0` | Prepreči umetne črne robove in pomnjenje položaja likov |
+| `Dropout(0.25)` in `L2(1e-4)` | `Dropout` med učenjem izklopi 25 % aktivacij; `L2` kaznuje velike uteži | Samo v prilagojenem modelu C pred in v sloju `Dense(32)` | Stabilizira učenje na 192 učnih slikah in zniža odklon na `0.062` |
+| `learning_rate` in `batch_size` | `lr` določa velikost koraka `Adam`; `batch_size` število slik na posodobitev | A/B: `lr=0.001`, `batch=32` (6 korakov/epoho); C: `lr=0.002`, `batch=16` (12 korakov/epoho) | Omogoči hitrejšo in popolno konvergenco modela C znotraj 50 epoh |
+| `epochs=50` in `EarlyStopping` | Omeji učenje na 50 epoh; prekine pri zastoju `val_loss` (`patience=10`) | V vseh 5 rezih s `restore_best_weights=True` | Zavaruje pred poslabšanjem v poznih epohah in povrne najboljše uteži |
+| `sparse_categorical_crossentropy` | Računa križno entropijo neposredno iz celoštevilskih oznak (`0, 1, 2`) | Prevajanje vseh modelov namesto *one-hot* kodiranja | Preprost, hiter in neposreden izračun izgube za 3 razrede |
+| 5-kratna stratificirana CV | Zbirko 300 slik razdeli na 5 enakih rezov (`192` učenje / `48` val / `60` test) | Vsi eksperimenti tečejo na enakih rezih s svežim modelom (`clear_session`) | Nepristransko ovrednotenje brez uhajanja podatkov med rezi |
